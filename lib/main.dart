@@ -1,8 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(MyApp());
@@ -29,12 +30,19 @@ class GeolocationPage extends StatefulWidget {
 class _GeolocationPageState extends State<GeolocationPage> {
   StreamSubscription<Position>? _positionStream;
   List<LatLng> _userLocations = [];
-  Completer<GoogleMapController> _controller = Completer();
+  final Completer<GoogleMapController> _controller =
+      Completer<GoogleMapController>();
+  Marker? _userMarker; // Marker for the user's current location
+  Marker? _tapMarker; // Marker for the tapped location
+  Polyline _route = Polyline(
+      polylineId: PolylineId('route'), points: []); // Initialize _route
 
   @override
   void initState() {
     super.initState();
     _requestLocationPermissionAndTrack();
+    _route = Polyline(polylineId: PolylineId('route'), points: []);
+    _tapMarker = null;
   }
 
   @override
@@ -42,23 +50,20 @@ class _GeolocationPageState extends State<GeolocationPage> {
     _positionStream?.cancel();
     super.dispose();
   }
-Future<void> _requestLocationPermissionAndTrack() async {
-  // Check if permission is already granted
-  if (await Permission.location.isGranted) {
-    // Permission is already granted, start tracking location
-    _startTrackingLocation();
-  } else {
-    // Permission is not granted, request permission
-    final status = await Permission.location.request();
-    if (status == PermissionStatus.granted) {
-      // Permission granted, start tracking location
-      _startTrackingLocation();
-    } else {
+
+  Future<void> _requestLocationPermissionAndTrack() async {
+    final locationPermission = await Geolocator.requestPermission();
+    if (locationPermission == LocationPermission.denied) {
       // Handle denied permission
       print('Location permission denied.');
+    } else if (locationPermission == LocationPermission.deniedForever) {
+      // Handle denied permission permanently
+      print('Location permission denied permanently.');
+    } else {
+      // Permission granted, start tracking location
+      _startTrackingLocation();
     }
   }
-}
 
   Future<void> _startTrackingLocation() async {
     if (await Geolocator.isLocationServiceEnabled()) {
@@ -69,6 +74,8 @@ Future<void> _requestLocationPermissionAndTrack() async {
       ).listen((Position position) {
         setState(() {
           _userLocations.add(LatLng(position.latitude, position.longitude));
+          _updateUserMarker(LatLng(position.latitude,
+              position.longitude)); // Update user's marker on the map
         });
       });
     } else {
@@ -77,13 +84,93 @@ Future<void> _requestLocationPermissionAndTrack() async {
     }
   }
 
+  void _updateUserMarker(LatLng userPosition) {
+    setState(() {
+      _userMarker = Marker(
+        markerId: MarkerId('user_marker'),
+        position: userPosition,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor
+            .hueAzure), // Custom icon for user's marker (optional)
+        infoWindow: InfoWindow(title: 'You are here'),
+      );
+    });
+  }
+
   Set<Marker> _createMarkers() {
-    return _userLocations.map((location) {
+    Set<Marker> markers = _userLocations.map((location) {
       return Marker(
         markerId: MarkerId(location.toString()),
         position: location,
       );
     }).toSet();
+
+    // Add user's marker to the set of markers
+    if (_userMarker != null) {
+      markers.add(_userMarker!);
+    }
+
+    // Add tapped marker to the set of markers
+    if (_tapMarker != null) {
+      markers.add(_tapMarker!);
+    }
+
+    return markers;
+  }
+
+  void _onMapTapped(LatLng latLng) async {
+    // Remove previous route and marker
+    setState(() {
+      _route = Polyline(polylineId: PolylineId('route'), points: []);
+      _tapMarker = Marker(
+        markerId: MarkerId('tap_marker'),
+        position: latLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor
+            .hueGreen), // Custom icon for tapped marker (optional)
+      );
+    });
+
+    // Calculate and display route
+    List<LatLng> routePoints = await _getRoutePoints(latLng);
+    setState(() {
+      _route = Polyline(
+          polylineId: PolylineId('route'),
+          points: routePoints,
+          color: Colors.blue,
+          width: 4);
+    });
+  }
+
+  Future<List<LatLng>> _getRoutePoints(LatLng destination) async {
+    String apiKey = 'AIzaSyA1nK41GjHw1VHxIXZysVSrHntSX1hvHUQ';
+    String apiUrl =
+        'https://maps.googleapis.com/maps/api/directions/json?origin=${_userLocations.last.latitude},${_userLocations.last.longitude}&destination=${destination.latitude},${destination.longitude}&key=$apiKey';
+
+    try {
+      final response = await http.get(Uri.parse(apiUrl));
+      if (response.statusCode == 200) {
+        Map<String, dynamic> data = jsonDecode(response.body);
+        if (data['status'] == 'OK') {
+          List<LatLng> routePoints = [];
+          List<dynamic> steps = data['routes'][0]['legs'][0]['steps'];
+          for (int i = 0; i < steps.length; i++) {
+            double startLat = steps[i]['start_location']['lat'];
+            double startLng = steps[i]['start_location']['lng'];
+            double endLat = steps[i]['end_location']['lat'];
+            double endLng = steps[i]['end_location']['lng'];
+            routePoints.add(LatLng(startLat, startLng));
+            routePoints.add(LatLng(endLat, endLng));
+          }
+          return routePoints;
+        } else {
+          print('Failed to fetch route. Status: ${data['status']}');
+        }
+      } else {
+        print('Failed to fetch route. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching route: $e');
+    }
+    return [];
   }
 
   @override
@@ -94,18 +181,29 @@ Future<void> _requestLocationPermissionAndTrack() async {
       ),
       body: _userLocations.isNotEmpty
           ? GoogleMap(
+              mapType: MapType.hybrid,
               initialCameraPosition: CameraPosition(
                 target: _userLocations.last,
                 zoom: 15,
               ),
               markers: _createMarkers(),
+              polylines: {if (_route.points.isNotEmpty) _route},
               onMapCreated: (GoogleMapController controller) {
                 _controller.complete(controller);
               },
+              onTap:
+                  _onMapTapped, // Call _onMapTapped when user taps on the map
             )
           : Center(
               child: Text('No location updates'),
             ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // Implement point selection and route calculation here
+          // This could involve showing a dialog for point selection and making API calls for route calculation
+        },
+        child: Icon(Icons.directions),
+      ),
     );
   }
 }
