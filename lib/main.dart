@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   runApp(MyApp());
@@ -41,20 +42,23 @@ class _GeolocationPageState extends State<GeolocationPage> {
     _positionStream?.cancel();
     super.dispose();
   }
-
-  Future<void> _requestLocationPermissionAndTrack() async {
-    final locationPermission = await Geolocator.requestPermission();
-    if (locationPermission == LocationPermission.denied) {
-      // Handle denied permission
-      print('Location permission denied.');
-    } else if (locationPermission == LocationPermission.deniedForever) {
-      // Handle denied permission permanently
-      print('Location permission denied permanently.');
-    } else {
+Future<void> _requestLocationPermissionAndTrack() async {
+  // Check if permission is already granted
+  if (await Permission.location.isGranted) {
+    // Permission is already granted, start tracking location
+    _startTrackingLocation();
+  } else {
+    // Permission is not granted, request permission
+    final status = await Permission.location.request();
+    if (status == PermissionStatus.granted) {
       // Permission granted, start tracking location
       _startTrackingLocation();
+    } else {
+      // Handle denied permission
+      print('Location permission denied.');
     }
   }
+}
 
   Future<void> _startTrackingLocation() async {
     if (await Geolocator.isLocationServiceEnabled()) {
