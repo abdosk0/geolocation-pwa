@@ -10,6 +10,8 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -17,31 +19,33 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: GeolocationPage(),
+      home: const GeolocationPage(),
     );
   }
 }
 
 class GeolocationPage extends StatefulWidget {
+  const GeolocationPage({super.key});
+
   @override
   _GeolocationPageState createState() => _GeolocationPageState();
 }
 
 class _GeolocationPageState extends State<GeolocationPage> {
   StreamSubscription<Position>? _positionStream;
-  List<LatLng> _userLocations = [];
+  final List<LatLng> _userLocations = [];
   final Completer<GoogleMapController> _controller =
       Completer<GoogleMapController>();
   Marker? _userMarker; // Marker for the user's current location
   Marker? _tapMarker; // Marker for the tapped location
-  Polyline _route = Polyline(
+  Polyline _route = const Polyline(
       polylineId: PolylineId('route'), points: []); // Initialize _route
 
   @override
   void initState() {
     super.initState();
     _requestLocationPermissionAndTrack();
-    _route = Polyline(polylineId: PolylineId('route'), points: []);
+    _route = const Polyline(polylineId: PolylineId('route'), points: []);
     _tapMarker = null;
   }
 
@@ -87,11 +91,11 @@ class _GeolocationPageState extends State<GeolocationPage> {
   void _updateUserMarker(LatLng userPosition) {
     setState(() {
       _userMarker = Marker(
-        markerId: MarkerId('user_marker'),
+        markerId: const MarkerId('user_marker'),
         position: userPosition,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor
             .hueAzure), // Custom icon for user's marker (optional)
-        infoWindow: InfoWindow(title: 'You are here'),
+        infoWindow: const InfoWindow(title: 'You are here'),
       );
     });
   }
@@ -120,24 +124,28 @@ class _GeolocationPageState extends State<GeolocationPage> {
   void _onMapTapped(LatLng latLng) async {
     // Remove previous route and marker
     setState(() {
-      _route = Polyline(polylineId: PolylineId('route'), points: []);
+      _route = const Polyline(polylineId: const PolylineId('route'), points: []);
       _tapMarker = Marker(
-        markerId: MarkerId('tap_marker'),
+        markerId: const MarkerId('tap_marker'),
         position: latLng,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor
             .hueGreen), // Custom icon for tapped marker (optional)
       );
     });
 
-    // Calculate and display route
-    List<LatLng> routePoints = await _getRoutePoints(latLng);
-    setState(() {
-      _route = Polyline(
-          polylineId: PolylineId('route'),
+    // Check if there are enough locations to calculate route
+    if (_userLocations.isNotEmpty) {
+      // Calculate and display route
+      List<LatLng> routePoints = await _getRoutePoints(latLng);
+      setState(() {
+        _route = Polyline(
+          polylineId: const PolylineId('route'),
           points: routePoints,
           color: Colors.blue,
-          width: 4);
-    });
+          width: 4,
+        );
+      });
+    }
   }
 
   Future<List<LatLng>> _getRoutePoints(LatLng destination) async {
@@ -177,7 +185,7 @@ class _GeolocationPageState extends State<GeolocationPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Real-time Geolocation PWA'),
+        title: const Text('Real-time Geolocation PWA'),
       ),
       body: _userLocations.isNotEmpty
           ? GoogleMap(
@@ -194,7 +202,7 @@ class _GeolocationPageState extends State<GeolocationPage> {
               onTap:
                   _onMapTapped, // Call _onMapTapped when user taps on the map
             )
-          : Center(
+          : const Center(
               child: Text('No location updates'),
             ),
       floatingActionButton: FloatingActionButton(
@@ -202,7 +210,7 @@ class _GeolocationPageState extends State<GeolocationPage> {
           // Implement point selection and route calculation here
           // This could involve showing a dialog for point selection and making API calls for route calculation
         },
-        child: Icon(Icons.directions),
+        child: const Icon(Icons.directions),
       ),
     );
   }
